@@ -156,7 +156,6 @@ void PlayerManager::sendPlayerTo(CNSocket* sock, int X, int Y, int Z) {
  * for in these packets, even if the player hasn't unlocked them.
  */
 static void sendNanoBook(CNSocket *sock, Player *plr, bool resizeOnly) {
-#ifdef ACADEMY
     int16_t id = 0;
     INITSTRUCT(sP_FE2CL_REP_NANO_BOOK_SUBSET, pkt);
 
@@ -178,7 +177,6 @@ static void sendNanoBook(CNSocket *sock, Player *plr, bool resizeOnly) {
 
         sock->sendPacket(pkt, P_FE2CL_REP_NANO_BOOK_SUBSET);
     }
-#endif
 }
 
 static void enterPlayer(CNSocket* sock, CNPacketData* data) {

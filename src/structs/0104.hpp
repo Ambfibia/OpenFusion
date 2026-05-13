@@ -6,7 +6,10 @@
 #define ABANK_COUNT 119
 
 // includes zeroeth entry
-#define NANO_COUNT 37
+#define NANO_COUNT 48
+
+// Academy nano book packet used by Retro clients.
+#define P_FE2CL_REP_NANO_BOOK_SUBSET 822083892
 
 #pragma pack(push)
 
@@ -176,6 +179,14 @@ struct sNano {
 struct sNanoBank {
 	int16_t iSkillID;
 	int16_t iStamina;
+};
+
+#pragma pack(4)
+struct sP_FE2CL_REP_NANO_BOOK_SUBSET {
+	int64_t PCUID;
+	int32_t bookSize;
+	int32_t elementOffset;
+	sNano element[10];
 };
 
 #pragma pack(4)
@@ -4809,6 +4820,7 @@ static_assert(sizeof(sSYSTEMTIME) == 32 || sizeof(sSYSTEMTIME) == 0);
 static_assert(sizeof(sEmailInfo) == 204 || sizeof(sEmailInfo) == 0);
 static_assert(sizeof(sNano) == 6 || sizeof(sNano) == 0);
 static_assert(sizeof(sNanoBank) == 4 || sizeof(sNanoBank) == 0);
+static_assert(sizeof(sP_FE2CL_REP_NANO_BOOK_SUBSET) == 76 || sizeof(sP_FE2CL_REP_NANO_BOOK_SUBSET) == 0);
 static_assert(sizeof(sTimeBuff) == 28 || sizeof(sTimeBuff) == 0);
 static_assert(sizeof(sTimeBuff_Svr) == 32 || sizeof(sTimeBuff_Svr) == 0);
 static_assert(sizeof(sPCLoadData2CL) == 2688 || sizeof(sPCLoadData2CL) == 0);

@@ -532,10 +532,8 @@ std::map<uint32_t, PacketDesc> Packets::packets = {
     PACKET(P_FE2CL_REP_PC_ITEM_ENCHANT_SUCC),
     PACKET(P_FE2CL_REP_PC_ITEM_ENCHANT_FAIL),
 
-#ifdef ACADEMY
-    // Academy-specific
+    // Academy nano book support used by Retro clients on top of 0104.
     PACKET(P_FE2CL_REP_NANO_BOOK_SUBSET),
-#endif
 };
 
 std::string Packets::p2str(int val) {
