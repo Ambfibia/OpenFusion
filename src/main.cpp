@@ -34,6 +34,7 @@
 #else
 #include <thread>
 #endif
+#include <algorithm>
 #include <string>
 #include <chrono>
 #include <signal.h>
@@ -176,15 +177,13 @@ int main() {
 // helper functions
 
 std::string U16toU8(char16_t* src, size_t max) {
-    src[max-1] = '\0'; // force a NULL terminator
     try {
+        size_t len = 0;
+        while (len < max && src[len] != '\0')
+            len++;
+
         std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,char16_t> convert;
-        std::string ret = convert.to_bytes(src);
-
-        if (ret.size() >= max)
-            ret.resize(max-2);
-
-        return ret;
+        return convert.to_bytes(src, src + len);
     } catch(const std::exception& e) {
         return "";
     }
@@ -192,17 +191,27 @@ std::string U16toU8(char16_t* src, size_t max) {
 
 // returns number of char16_t that was written at des
 size_t U8toU16(std::string src, char16_t* des, size_t max) {
-    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,char16_t> convert;
-    std::u16string tmp = convert.from_bytes(src);
+    size_t maxUnits = max / sizeof(char16_t);
 
-    // copy utf16 string to buffer
-    if (sizeof(char16_t) * tmp.length() > max) // make sure we don't write outside the buffer
-        memcpy(des, tmp.c_str(), sizeof(char16_t) * max);
-    else
-        memcpy(des, tmp.c_str(), sizeof(char16_t) * tmp.length());
-    des[tmp.length()] = '\0';
+    if (maxUnits == 0)
+        return 0;
 
-    return tmp.length();
+    try {
+        std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,char16_t> convert;
+        std::u16string tmp = convert.from_bytes(src);
+        size_t written = std::min(tmp.length(), maxUnits - 1);
+
+        if (written > 0 && tmp[written - 1] >= 0xD800 && tmp[written - 1] <= 0xDBFF)
+            written--;
+
+        memcpy(des, tmp.c_str(), sizeof(char16_t) * written);
+        des[written] = '\0';
+
+        return written;
+    } catch (const std::exception& e) {
+        des[0] = '\0';
+        return 0;
+    }
 }
 
 time_t getTime() {

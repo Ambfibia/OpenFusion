@@ -57,10 +57,10 @@ static bool transmit(std::list<SOCKET>::iterator& it, char *buff, int len) {
  * The body can grow to twice its usual size (512) in the pathological case
  * where every character is a newline.
  *
- * Multi-byte Unicode characters aren't a factor, as they should've been
- * stripped out by sanitizeText().
+ * Multi-byte Unicode characters can make the byte length larger than the
+ * UTF-16 packet field length, so leave enough room for UTF-8 expansion.
  */
-#define BUFSIZE 2048
+#define BUFSIZE 4096
 
 static int process_email(char *buff, std::string email) {
     strncpy(buff, "email ", 6);

@@ -280,28 +280,19 @@ static void groupMenuChatHandler(CNSocket* sock, CNPacketData* data) {
     Groups::sendToGroup(plr->group, (void*)&resp, P_FE2CL_REP_SEND_ALL_GROUP_MENUCHAT_MESSAGE_SUCC, sizeof(sP_FE2CL_REP_SEND_ALL_GROUP_MENUCHAT_MESSAGE_SUCC));
 }
 
-// we only allow plain ascii, at least for now
 std::string Chat::sanitizeText(std::string text, bool allowNewlines) {
-    int i;
-    const int BUFSIZE = 512;
-    char buf[BUFSIZE];
+    std::string sanitized;
+    sanitized.reserve(text.size());
 
-    assert(text.size() < BUFSIZE);
-
-    i = 0;
-    for (char c : text) {
-        if (i >= BUFSIZE-1)
-            break;
-
+    for (unsigned char c : text) {
         if (!allowNewlines && c == '\n')
             continue;
 
-        if ((c >= ' ' && c <= '~') || c == '\n')
-            buf[i++] = c;
+        if (c == '\n' || c >= ' ')
+            sanitized += c;
     }
-    buf[i] = 0;
 
-    return std::string(buf);
+    return sanitized;
 }
 
 void Chat::init() {
