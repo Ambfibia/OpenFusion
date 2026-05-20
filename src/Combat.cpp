@@ -310,6 +310,8 @@ void CombatNPC::step(time_t currTime) {
 }
 
 void CombatNPC::transition(AIState newState, EntityRef src) {
+    bool wasExtant = isExtant();
+
     state = newState;
 
     if (transitionHandlers.find(newState) != transitionHandlers.end())
@@ -323,6 +325,9 @@ void CombatNPC::transition(AIState newState, EntityRef src) {
     for (NPCEvent& event : NPCManager::NPCEvents)
         if (event.triggerState == newState && event.npcType == type)
             event.handler(this);
+
+    if (wasExtant != isExtant())
+        NPCManager::markPresentNpcTypesDirty();
 }
 #pragma endregion
 

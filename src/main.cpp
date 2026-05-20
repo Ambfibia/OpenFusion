@@ -118,6 +118,7 @@ int main() {
     TableData::init();
 
     std::cout << "[INFO] Intializing Packet Managers..." << std::endl;
+    Packets::init();
 
     PlayerManager::init();
     PlayerMovement::init();

@@ -67,6 +67,36 @@ void terminate(int);
     #error Invalid PROTOCOL_VERSION
 #endif
 
+#pragma pack(push, 4)
+struct sP_CL2FE_REQ_PRESENT_NPC_TYPES {
+    uint64_t uiLastSyncTime;
+};
+
+struct sP_FE2CL_NPC_CUSTOM_ATTACK_PCs {
+    int32_t iNPC_ID;
+    int32_t iMode;
+    int32_t iProjectileType;
+    int32_t iPCCnt;
+};
+
+struct sP_FE2CL_NPC_SELF_EFFECT {
+    int32_t iNPC_ID;
+    int32_t iEffect;
+    char szSFX[128];
+    char szAnimation[128];
+};
+
+struct sP_FE2CL_REP_PRESENT_NPC_TYPES {
+    int32_t bClear;
+    int32_t iCnt;
+};
+#pragma pack(pop)
+
+static_assert(sizeof(sP_CL2FE_REQ_PRESENT_NPC_TYPES) == 8);
+static_assert(sizeof(sP_FE2CL_NPC_CUSTOM_ATTACK_PCs) == 16);
+static_assert(sizeof(sP_FE2CL_NPC_SELF_EFFECT) == 264);
+static_assert(sizeof(sP_FE2CL_REP_PRESENT_NPC_TYPES) == 8);
+
 #define AEQUIP_COUNT_MINUS_BOOSTERS 9
 #define AEQUIP_COUNT_WITH_BOOSTERS 12
 

@@ -1,8 +1,8 @@
 
 #include "settings.hpp"
 
-#include "core/CNStructs.hpp" // so we get the ACADEMY definition
 #include "INIReader.hpp"
+#include "core/CNStructs.hpp" // so we get the ACADEMY definition
 
 #include <iostream>
 

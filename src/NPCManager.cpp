@@ -21,6 +21,7 @@
 #include <list>
 #include <fstream>
 #include <vector>
+#include <cstring>
 #include <assert.h>
 #include <limits.h>
 
@@ -32,6 +33,10 @@ std::vector<WarpLocation> NPCManager::RespawnPoints;
 nlohmann::json NPCManager::NPCData;
 
 static std::queue<int32_t> RemovalQueue;
+static uint64_t PresentNpcTypesGeneration = 1;
+static constexpr uint64_t PRESENT_NPC_TYPES_RATE_LIMIT_MS = 1000;
+static constexpr size_t MAX_PRESENT_NPC_TYPES_PER_PACKET =
+    (CN_PACKET_BODY_SIZE - sizeof(sP_FE2CL_REP_PRESENT_NPC_TYPES)) / sizeof(int32_t);
 
 /*
  * Initialized at the end of TableData::init().
@@ -39,6 +44,10 @@ static std::queue<int32_t> RemovalQueue;
  * NPC ID collisions.
  */
 int32_t NPCManager::nextId;
+
+void NPCManager::markPresentNpcTypesDirty() {
+    PresentNpcTypesGeneration++;
+}
 
 void NPCManager::destroyNPC(int32_t id) {
     // sanity check
@@ -48,6 +57,8 @@ void NPCManager::destroyNPC(int32_t id) {
     }
 
     BaseNPC* entity = NPCs[id];
+    if (entity->isExtant())
+        markPresentNpcTypesDirty();
 
     // sanity check
     if (!Chunking::chunkExists(entity->chunkPos)) {
@@ -71,6 +82,7 @@ void NPCManager::updateNPCPosition(int32_t id, int X, int Y, int Z, uint64_t I, 
     BaseNPC* npc = NPCs[id];
     npc->angle = angle;
     ChunkPos oldChunk = npc->chunkPos;
+    uint64_t oldInstance = npc->instanceID;
     ChunkPos newChunk = Chunking::chunkPosAt(X, Y, I);
     npc->x = X;
     npc->y = Y;
@@ -79,6 +91,8 @@ void NPCManager::updateNPCPosition(int32_t id, int X, int Y, int Z, uint64_t I, 
     if (oldChunk == newChunk)
         return; // didn't change chunks
     Chunking::updateEntityChunk({id}, oldChunk, newChunk);
+    if (oldInstance != I || oldChunk == Chunking::INVALID_CHUNK)
+        markPresentNpcTypesDirty();
 }
 
 void NPCManager::sendToViewable(Entity *npc, void *buf, uint32_t type, size_t size) {
@@ -138,6 +152,108 @@ static void npcBarkHandler(CNSocket* sock, CNPacketData* data) {
     resp.iNPC_ID = npcID;
     resp.iMissionStringID = missionStringID;
     sock->sendPacket(resp, P_FE2CL_REP_BARKER);
+}
+
+static bool shouldIncludeInPresentNpcTypes(BaseNPC* npc, Player* plr) {
+    if (npc == nullptr || plr == nullptr)
+        return false;
+
+    if (!npc->isExtant())
+        return false;
+
+    if (npc->type < 0)
+        return false;
+
+    switch (npc->kind) {
+    case EntityKind::SIMPLE_NPC:
+    case EntityKind::COMBAT_NPC:
+    case EntityKind::MOB:
+        break;
+    default:
+        return false;
+    }
+
+    return npc->instanceID == plr->instanceID;
+}
+
+static std::vector<int32_t> buildPresentNpcTypes(Player* plr) {
+    std::set<int32_t> types;
+
+    for (auto& pair : NPCs) {
+        BaseNPC* npc = pair.second;
+        if (shouldIncludeInPresentNpcTypes(npc, plr))
+            types.insert(npc->type);
+    }
+
+    return std::vector<int32_t>(types.begin(), types.end());
+}
+
+static void sendPresentNpcTypesChunk(CNSocket* sock, const std::vector<int32_t>& types, size_t offset, size_t count, bool clear) {
+    uint8_t respbuf[CN_PACKET_BODY_SIZE];
+    memset(respbuf, 0, CN_PACKET_BODY_SIZE);
+
+    auto resp = (sP_FE2CL_REP_PRESENT_NPC_TYPES*)respbuf;
+    auto npcTypes = (int32_t*)(respbuf + sizeof(sP_FE2CL_REP_PRESENT_NPC_TYPES));
+
+    resp->bClear = clear ? 1 : 0;
+    resp->iCnt = (int32_t)count;
+
+    for (size_t i = 0; i < count; i++)
+        npcTypes[i] = types[offset + i];
+
+    size_t resplen = sizeof(sP_FE2CL_REP_PRESENT_NPC_TYPES) + count * sizeof(int32_t);
+    sock->sendPacket(respbuf, P_FE2CL_REP_PRESENT_NPC_TYPES, resplen);
+}
+
+static void sendPresentNpcTypes(CNSocket* sock, const std::vector<int32_t>& types) {
+    if (MAX_PRESENT_NPC_TYPES_PER_PACKET == 0) {
+        std::cout << "[WARN] sP_FE2CL_REP_PRESENT_NPC_TYPES has no payload capacity\n";
+        return;
+    }
+
+    if (types.empty()) {
+        sendPresentNpcTypesChunk(sock, types, 0, 0, true);
+        return;
+    }
+
+    size_t offset = 0;
+    bool clear = true;
+    while (offset < types.size()) {
+        size_t count = std::min(MAX_PRESENT_NPC_TYPES_PER_PACKET, types.size() - offset);
+        if (!validOutVarPacket(sizeof(sP_FE2CL_REP_PRESENT_NPC_TYPES), count, sizeof(int32_t))) {
+            std::cout << "[WARN] bad sP_FE2CL_REP_PRESENT_NPC_TYPES packet size\n";
+            return;
+        }
+
+        sendPresentNpcTypesChunk(sock, types, offset, count, clear);
+        clear = false;
+        offset += count;
+    }
+}
+
+static void presentNpcTypesHandler(CNSocket* sock, CNPacketData* data) {
+    auto req = (sP_CL2FE_REQ_PRESENT_NPC_TYPES*)data->buf;
+    Player* plr = PlayerManager::getPlayer(sock);
+    if (plr == nullptr)
+        return;
+
+    uint64_t now = getTime();
+    bool cacheFresh = plr->presentNpcTypesCacheValid
+        && now - plr->lastPresentNpcTypesRequest < PRESENT_NPC_TYPES_RATE_LIMIT_MS
+        && plr->lastPresentNpcTypesGeneration == PresentNpcTypesGeneration
+        && plr->lastPresentNpcTypesInstance == plr->instanceID;
+
+    // This server does not keep a historical diff log, so every request gets a
+    // clear+full snapshot. Future/unknown sync times naturally fall back to this path.
+    if (!cacheFresh || req->uiLastSyncTime > now) {
+        plr->cachedPresentNpcTypes = buildPresentNpcTypes(plr);
+        plr->presentNpcTypesCacheValid = true;
+        plr->lastPresentNpcTypesGeneration = PresentNpcTypesGeneration;
+        plr->lastPresentNpcTypesInstance = plr->instanceID;
+    }
+
+    plr->lastPresentNpcTypesRequest = now;
+    sendPresentNpcTypes(sock, plr->cachedPresentNpcTypes);
 }
 
 static void npcUnsummonHandler(CNSocket* sock, CNPacketData* data) {
@@ -401,6 +517,7 @@ void NPCManager::init() {
     REGISTER_SHARD_PACKET(P_CL2FE_REQ_NPC_SUMMON, npcSummonHandler);
     REGISTER_SHARD_PACKET(P_CL2FE_REQ_NPC_UNSUMMON, npcUnsummonHandler);
     REGISTER_SHARD_PACKET(P_CL2FE_REQ_BARKER, npcBarkHandler);
+    REGISTER_SHARD_PACKET(P_CL2FE_REQ_PRESENT_NPC_TYPES, presentNpcTypesHandler);
 
     REGISTER_SHARD_TIMER(step, MS_PER_COMBAT_TICK);
 }

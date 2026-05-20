@@ -13,14 +13,25 @@ using namespace Chunking;
  * The initial chunkPos value before a player is placed into the world.
  */
 const ChunkPos Chunking::INVALID_CHUNK = {};
-constexpr size_t MAX_PC_PER_AROUND = (CN_PACKET_BODY_SIZE - sizeof(int32_t)) / sizeof(sPCAppearanceData);
-constexpr size_t MAX_NPC_PER_AROUND = (CN_PACKET_BODY_SIZE - sizeof(int32_t)) / sizeof(sNPCAppearanceData);
+constexpr size_t MAX_PC_PER_AROUND = (CN_PACKET_BODY_SIZE - sizeof(sPCAppearanceData)) / sizeof(sPCAppearanceData);
+constexpr size_t MAX_NPC_PER_AROUND = (CN_PACKET_BODY_SIZE - sizeof(sNPCAppearanceData)) / sizeof(sNPCAppearanceData);
 constexpr size_t MAX_SHINY_PER_AROUND = (CN_PACKET_BODY_SIZE - sizeof(int32_t)) / sizeof(sShinyAppearanceData);
-constexpr size_t MAX_TRANSPORTATION_PER_AROUND = (CN_PACKET_BODY_SIZE - sizeof(int32_t)) / sizeof(sTransportationAppearanceData);
+constexpr size_t MAX_TRANSPORTATION_PER_AROUND = (CN_PACKET_BODY_SIZE - sizeof(sTransportationAppearanceData)) / sizeof(sTransportationAppearanceData);
 constexpr size_t MAX_IDS_PER_AROUND_DEL = (CN_PACKET_BODY_SIZE - sizeof(int32_t)) / sizeof(int32_t);
 constexpr size_t MAX_TRANSPORTATION_IDS_PER_AROUND_DEL = MAX_IDS_PER_AROUND_DEL - 1; // 1 less for eTT
 
 std::map<ChunkPos, Chunk*> Chunking::chunks;
+
+static size_t getAroundPacketDataOffset(uint32_t packetId, size_t elementSize) {
+    switch (packetId) {
+    case P_FE2CL_PC_AROUND:
+    case P_FE2CL_NPC_AROUND:
+    case P_FE2CL_TRANSPORTATION_AROUND:
+        return elementSize;
+    default:
+        return sizeof(int32_t);
+    }
+}
 
 static void newChunk(ChunkPos pos) {
     if (chunkExists(pos)) {
@@ -90,13 +101,15 @@ static void sendAroundPackets(const EntityRef recipient, std::vector<Bucket<T, N
     uint8_t pktBuf[CN_PACKET_BODY_SIZE];
     for (const auto& bucket : buckets) {
         memset(pktBuf, 0, CN_PACKET_BODY_SIZE);
-        int count = bucket.size();
-        *((int32_t*)pktBuf) = count;
-        T* data = (T*)(pktBuf + sizeof(int32_t));
+        size_t count = bucket.size();
+        *((int32_t*)pktBuf) = (int32_t)count;
+        size_t baseSize = getAroundPacketDataOffset(packetId, sizeof(T));
+        assert(baseSize + (count * sizeof(T)) <= CN_PACKET_BODY_SIZE);
+        T* data = (T*)(pktBuf + baseSize);
         for (size_t i = 0; i < count; i++) {
             data[i] = bucket.get(i).value();
         }
-        recipient.sock->sendPacket(pktBuf, packetId, sizeof(int32_t) + (count * sizeof(T)));
+        recipient.sock->sendPacket(pktBuf, packetId, baseSize + (count * sizeof(T)));
     }
 }
 
@@ -107,17 +120,17 @@ static void sendAroundDelPackets(const EntityRef recipient, std::vector<Bucket<i
     uint8_t pktBuf[CN_PACKET_BODY_SIZE];
     for (const auto& bucket : buckets) {
         memset(pktBuf, 0, CN_PACKET_BODY_SIZE);
-        int count = bucket.size();
+        size_t count = bucket.size();
         assert(count <= N);
 
         size_t baseSize;
         if (packetId == P_FE2CL_AROUND_DEL_TRANSPORTATION) {
             sP_FE2CL_AROUND_DEL_TRANSPORTATION* pkt = (sP_FE2CL_AROUND_DEL_TRANSPORTATION*)pktBuf;
             pkt->eTT = 3;
-            pkt->iCnt = count;
+            pkt->iCnt = (int32_t)count;
             baseSize = sizeof(sP_FE2CL_AROUND_DEL_TRANSPORTATION);
         } else {
-            *((int32_t*)pktBuf) = count;
+            *((int32_t*)pktBuf) = (int32_t)count;
             baseSize = sizeof(int32_t);
         }
         int32_t* ids = (int32_t*)(pktBuf + baseSize);

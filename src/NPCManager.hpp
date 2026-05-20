@@ -39,6 +39,7 @@ namespace NPCManager {
     void updateNPCPosition(int32_t, int X, int Y, int Z, uint64_t I, int angle);
 
     void sendToViewable(Entity* npc, void* buf, uint32_t type, size_t size);
+    void markPresentNpcTypesDirty();
 
     BaseNPC *summonNPC(int x, int y, int z, uint64_t instance, int type, bool respawn=false, bool baseInstance=false);
 

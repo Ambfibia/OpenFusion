@@ -52,6 +52,7 @@
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
+#include <map>
 
 #include "Defines.hpp"
 #include "Packets.hpp"
@@ -133,7 +134,7 @@ bool setSockNonblocking(SOCKET listener, SOCKET newSock);
 
 namespace CNSocketEncryption {
     // you won't believe how complicated they made it in the client :facepalm:
-    static constexpr const char* defaultKey = "m@rQn~W#";
+    static constexpr const char* defaultKey = "b>$rT~!Q";
     static const unsigned int keyLength = 8;
 
     int Encrypt_byte_change_A(int ERSize, uint8_t* data, int size);
@@ -165,6 +166,8 @@ class CNSocket {
 private:
     uint64_t EKey;
     uint64_t FEKey;
+    uint8_t readSizeBuffer[sizeof(int32_t)] = {};
+    int readSizeIndex = 0;
     int32_t readSize = 0;
     uint8_t readBuffer[CN_PACKET_BUFFER_SIZE];
     int readBufferIndex = 0;

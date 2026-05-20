@@ -3,6 +3,31 @@
 
 #include <assert.h>
 
+namespace {
+    constexpr uint32_t PACKET_TYPE_MASK = 0xFF000FFF;
+    constexpr uint32_t PACKET_TYPE_FLAG_SHIFT = 12;
+
+    uint32_t getPacketType(uint32_t rawType) {
+        return rawType & PACKET_TYPE_MASK;
+    }
+
+    uint32_t packetChecksum(const uint8_t* packet, size_t size) {
+        uint32_t sumA = 0;
+        uint32_t sumB = 0;
+
+        for (size_t i = sizeof(uint32_t); i < size; i++) {
+            sumA = (sumA + packet[i]) % 0xff;
+            sumB = (sumB + sumA) % 0xff;
+        }
+
+        return ((sumB << 8) | sumA) & 0xfff;
+    }
+
+    uint32_t makeWirePacketType(uint32_t type, const uint8_t* packet, size_t size) {
+        return getPacketType(type) | (packetChecksum(packet, size) << PACKET_TYPE_FLAG_SHIFT);
+    }
+}
+
 // ========================================================[[ CNSocketEncryption ]]========================================================
 
 // literally C/P from the client and converted to C++ (does some byte swapping /shrug)
@@ -83,6 +108,8 @@ bool CNSocket::sendData(uint8_t* data, int size) {
             printSocketError("send");
             return false; // error occured while sending bytes
         }
+        if (sent == 0)
+            return false;
         sentBytes += sent;
     }
 
@@ -125,6 +152,8 @@ void CNSocket::kill() {
 }
 
 void CNSocket::validatingSendPacket(void *pkt, uint32_t packetType) {
+    Packets::init();
+
     assert(isOutboundPacketID(packetType));
     assert(Packets::packets.find(packetType) != Packets::packets.end());
 
@@ -160,6 +189,8 @@ void CNSocket::sendPacket(void* buf, uint32_t type, size_t size) {
     // copy packet type to the front of the buffer & then the actual buffer
     memcpy(body, (void*)&type, 4);
     memcpy(body+4, buf, size);
+    uint32_t wireType = makeWirePacketType(type, body, bodysize);
+    memcpy(body, (void*)&wireType, 4);
 
     // encrypt the packet
     switch (activeKey) {
@@ -186,7 +217,16 @@ void CNSocket::setActiveKey(ACTIVEKEY key) {
 }
 
 inline void CNSocket::parsePacket(uint8_t *buf, size_t size) {
-    uint32_t type = *((uint32_t*)buf);
+    Packets::init();
+
+    if (size < sizeof(uint32_t)) {
+        std::cerr << "OpenFusion: received undersized packet" << std::endl;
+        return;
+    }
+
+    uint32_t rawType;
+    memcpy(&rawType, buf, sizeof(rawType));
+    uint32_t type = getPacketType(rawType);
     uint8_t *body = buf + 4;
     size_t pktSize = size - 4;
 
@@ -244,17 +284,23 @@ void CNSocket::step() {
 
     // XXX NOTE: we must not recv() twice without a poll() inbetween
     if (readSize <= 0) {
-        // we aren't reading a packet yet, try to start looking for one
-        int recved = recv(sock, (buffer_t*)readBuffer, sizeof(int32_t), 0);
-        if (recved >= 0 && recved < sizeof(int32_t)) {
-            // too little data for readSize or the socket was closed normally (when 0 bytes were read)
+        // we aren't reading a packet yet, try to start looking for its size
+        int recved = recv(sock, (buffer_t*)(readSizeBuffer + readSizeIndex), sizeof(int32_t) - readSizeIndex, 0);
+        if (recved == 0) {
+            // the socket was closed normally
             kill();
             return;
         } else if (!SOCKETERROR(recved)) {
+            readSizeIndex += recved;
+            if (readSizeIndex < (int)sizeof(int32_t))
+                return;
+
             // we got our packet size!!!!
-            readSize = *((int32_t*)readBuffer);
+            memcpy(&readSize, readSizeBuffer, sizeof(readSize));
+            readSizeIndex = 0;
+
             // sanity check
-            if (readSize > CN_PACKET_BUFFER_SIZE) {
+            if (readSize < (int32_t)sizeof(uint32_t) || readSize > CN_PACKET_BUFFER_SIZE) {
                 kill();
                 return;
             }
@@ -288,7 +334,7 @@ void CNSocket::step() {
 
     if (activelyReading && readBufferIndex >= readSize) {
         // decrypt readBuffer and copy to CNPacketData
-        CNSocketEncryption::decryptData((uint8_t*)&readBuffer, (uint8_t*)(&EKey), readSize);
+        CNSocketEncryption::decryptData(readBuffer, (uint8_t*)(&EKey), readSize);
 
         parsePacket(readBuffer, readSize);
 

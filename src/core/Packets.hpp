@@ -1,37 +1,24 @@
 #pragma once
 
-#include "CNStructs.hpp"
-
 #include <map>
+#include <string>
+
+#include "CNStructs.hpp"
 
 // Packet Descriptor
 struct PacketDesc {
-        uint32_t val;
-        std::string name;
-        size_t size;
-        bool variadic;
-        size_t cntMembOfs;
-        size_t trailerSize;
+        uint32_t val = 0;
+        std::string name = "";
+        size_t size = 0;
+        bool variadic = false;
+        size_t cntMembOfs = 0;
+        size_t trailerSize = 0;
 
-        PacketDesc() {}
-
-        PacketDesc(const PacketDesc& other) {
-            val = other.val;
-            name = other.name;
-            size = other.size;
-            variadic = other.variadic;
-            cntMembOfs = other.cntMembOfs;
-            trailerSize = other.trailerSize;
-        }
-
-        PacketDesc(PacketDesc&& other) {
-            val = other.val;
-            name = std::move(other.name);
-            size = other.size;
-            variadic = other.variadic;
-            cntMembOfs = other.cntMembOfs;
-            trailerSize = other.trailerSize;
-        }
+        PacketDesc() = default;
+        PacketDesc(const PacketDesc& other) = default;
+        PacketDesc(PacketDesc&& other) = default;
+        PacketDesc& operator=(const PacketDesc& other) = default;
+        PacketDesc& operator=(PacketDesc&& other) = default;
 
         // non-variadic constructor
         PacketDesc(uint32_t v, size_t s, std::string n) :
@@ -59,5 +46,6 @@ struct sSkillResult_Leech {
 namespace Packets {
     extern std::map<uint32_t, PacketDesc> packets;
 
+    void init();
     std::string p2str(int val);
 }

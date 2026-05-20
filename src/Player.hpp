@@ -86,6 +86,12 @@ struct Player : public Entity, public ICombatant {
     uint64_t iFirstUseFlag[2] = {};
     time_t lastHeartbeat = 0;
 
+    bool presentNpcTypesCacheValid = false;
+    uint64_t lastPresentNpcTypesRequest = 0;
+    uint64_t lastPresentNpcTypesGeneration = 0;
+    uint64_t lastPresentNpcTypesInstance = UINT64_MAX;
+    std::vector<int32_t> cachedPresentNpcTypes = {};
+
     int suspicionRating = 0;
     time_t lastShot = 0;
     std::vector<sItemBase> buyback = {};
