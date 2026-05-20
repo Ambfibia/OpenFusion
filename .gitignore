@@ -18,3 +18,4 @@ infer-out
 gmon.out
 *.bak
 
+/work
