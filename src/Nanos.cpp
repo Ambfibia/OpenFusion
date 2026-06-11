@@ -20,24 +20,17 @@ void Nanos::addNano(CNSocket* sock, int16_t nanoID, int16_t slot, bool spendfm) 
         return;
 
     Player *plr = PlayerManager::getPlayer(sock);
-
     int level = plr->level;
 
-#ifndef ACADEMY
-    level = nanoID < plr->level ? plr->level : nanoID;
-
     /*
-     * Spend the necessary Fusion Matter.
-     * Note the use of the not-yet-incremented plr->level as opposed to level.
-     * Doing it the other way always leaves the FM at 0. Jade totally called it.
+     * Custom and later clients decouple nano IDs from player progression, so awarding a nano must
+     * never rewrite the character level based on nanoID. Keep the current level stable and only
+     * charge the FM cost for nano creation flows that explicitly request it.
      */
-    plr->level = level;
-
     if (spendfm) {
         plr->subtractCapped(CappedValueType::FUSIONMATTER, (int)Missions::AvatarGrowth[plr->level-1]["m_iReqBlob_NanoCreate"]);
         Missions::updateFusionMatter(sock);
     }
-#endif
 
     // Send to client
     INITSTRUCT(sP_FE2CL_REP_PC_NANO_CREATE_SUCC, resp);
@@ -56,10 +49,8 @@ void Nanos::addNano(CNSocket* sock, int16_t nanoID, int16_t slot, bool spendfm) 
     sock->sendPacket(resp, P_FE2CL_REP_PC_NANO_CREATE_SUCC);
 
     /*
-     * iPC_Level in NANO_CREATE_SUCC sets the player's level.
-     * Other players must be notified of the change as well. Both P_FE2CL_REP_PC_NANO_CREATE and
-     * P_FE2CL_REP_PC_CHANGE_LEVEL appear to play the same animation, but only the latter affects
-     * the other player's displayed level.
+     * iPC_Level in NANO_CREATE_SUCC is still consumed by the client, so preserve the player's
+     * existing level explicitly and mirror it to nearby players for consistency.
      */
 
     INITSTRUCT(sP_FE2CL_REP_PC_CHANGE_LEVEL, resp2);

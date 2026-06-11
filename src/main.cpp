@@ -38,6 +38,11 @@
 #include <string>
 #include <chrono>
 #include <signal.h>
+#include <clocale>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 // HACK
 #ifdef __has_feature
@@ -99,7 +104,19 @@ void initsignals() {
 #endif
 }
 
+static void initConsoleEncoding() {
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+    setlocale(LC_ALL, ".UTF-8");
+#else
+    setlocale(LC_ALL, "");
+#endif
+}
+
 int main() {
+    initConsoleEncoding();
+
     std::cout << "[INFO] OpenFusion v" GIT_VERSION << std::endl;
     std::cout << "[INFO] Protocol version: " << PROTOCOL_VERSION << std::endl;
 
